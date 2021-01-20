@@ -1,0 +1,198 @@
+---
+title: "Analisis Sentimen"
+author: "Rosinta Anggraini"
+date: "1/11/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(twitteR, wordcloud, tm, tidyr, tidytext, syuzhet, ngram, NLP, RColorBrewer, RTextTools, e1071, caret, knitr)
+```
+
+```{r installib}
+library(twitteR)
+library(ROAuth)
+library(tm)
+library(rtweet)
+library(wordcloud2)
+library(e1071)
+library(caret)
+library(syuzhet)
+reqURL <- "http://api.twitter.com/oath/request_token"
+accessURL <- "https://api.twitter.com/oauth/access_token"
+
+api_key<- "LK3HoU3kjEltOtNVCpcg4J448"
+api_secret<- "EFQfzAMpQAWQwlpeg0jsIChJQkwvJYXfNfnZgyi3YCrQ3Ku7l8"
+access_token<- "1322548274838949891-wxfiZhaox9ZUK4KnrwHlNTDz2iybVv"
+access_token_secret<- "yf2mAbS3aKnp2A7nLDh9qv8RryLSerbsfn81GtEIFhR9s"
+setup_twitter_oauth(api_key,api_secret,access_token,access_token_secret)
+
+
+```
+
+
+```{r bagi data}
+library(e1071)
+library(caret)
+library(syuzhet)
+#membaca file csv yang setelah cleaning data 
+shopee_dataset <-read.csv("tweetclean.csv",stringsAsFactors = FALSE)
+#mengubah variabel cloumn text menjadi char
+review <- as.character(shopee_dataset$text)
+#Calls the NRC sentiment dictionary to calculate the presence of eight different emotions and their corresponding valence in a text file.
+get_nrc_sentiment('happy')
+get_nrc_sentiment('excitement')
+s<-get_nrc_sentiment(review)
+review_combine<-cbind(shopee_dataset$text,s)
+par(mar=rep(3,4))
+barplot(colSums(s),col=rainbow(10),ylab='count',main='sentiment analisis')
+```
+```{r bagi data2}
+#library untuk penggunaan corpus dalam cleaning data
+library(tm)
+library(RTextTools)
+#library yang terdapat sebuah algoritma naivebayes
+library(e1071)
+library(dplyr)
+library(caret)
+df<-read.csv("tweetclean.csv",stringsAsFactors = FALSE)
+glimpse(df)
+#Set the seed of R‘s random number generator, which is useful for creating simulations or random objects that can be reproduced.
+set.seed(20)
+df<-df[sample(nrow(df)),]
+df<-df[sample(nrow(df)),]
+glimpse(df)
+df$X=as.factor(df$X)
+corpus<-Corpus(VectorSource(df$text))
+corpus
+inspect(corpus[1:10])
+#fungsinya untuk membersihkan data data yang tidak dibutuhkan 
+corpus.clean<-corpus%>%
+    tm_map(content_transformer(tolower))%>%
+    tm_map(removePunctuation)%>%
+    tm_map(removeNumbers)%>%
+    tm_map(removeWords,stopwords(kind="en"))%>%
+    tm_map(stripWhitespace)
+dtm<-DocumentTermMatrix(corpus.clean)
+inspect(dtm[1:10,1:20])
+df.train<-df[1:589,]
+df.test<-df[590:1000,]
+dtm.train<-dtm[1:589,]
+dtm.test<-dtm[590:1000,]
+corpus.clean.train<-corpus.clean[1:589]
+corpus.clean.test<-corpus.clean[590:1000]
+dim(dtm.train)
+fivefreq<-findFreqTerms(dtm.train,5)
+length(fivefreq)
+dtm.train.nb<-DocumentTermMatrix(corpus.clean.train,control = list(dictionary=fivefreq))
+#dim(dtm.train.nb)
+dtm.test.nb<-DocumentTermMatrix(corpus.clean.test,control = list(dictionary=fivefreq))
+dim(dtm.test.nb)
+ 
+convert_count <- function(x){
+    y<-ifelse(x>0,1,0)
+    y<-factor(y,levels=c(0,1),labels=c("no","yes"))
+    y
+}
+trainNB<-apply(dtm.train.nb,2,convert_count)
+testNB<-apply(dtm.test.nb,1,convert_count)
+classifier<-naiveBayes(trainNB,df.train$X,laplace = 1)
+library(wordcloud)
+wordcloud(corpus.clean,min.freq = 4,max.words=100,random.order=F,colors=brewer.pal(8,"Dark2"))
+```
+
+```{r global}
+library(shiny)
+library(here)
+library(vroom)
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(syuzhet)
+twitter<- vroom(here("tweetclean.csv"),delim = ",")
+tweet<- twitter$text
+ui <- fluidPage(
+  
+    titlePanel("ANALISIS SENTIMEN SHOPEE TWITTER DATA"),
+        mainPanel(
+            
+            tabsetPanel(type = "tabs",
+                        tabPanel("Scatterplot", plotOutput("scatterplot")), 
+                        # Plot
+                         
+                        tabPanel("Wordcloud", plotOutput("Wordcloud")),
+                        tabPanel("Data Tweets", DT::dataTableOutput('tbl'))
+                        # Output Data Dalam Tabel
+                        )
+        )
+    )
+# SERVER
+server <- function(input, output) {
+    
+    # Output Data
+    output$tbl = DT::renderDataTable({
+        DT::datatable(twitter, options = list(lengthChange = FALSE))
+    })
+    
+    output$scatterplot <- renderPlot({shopee_dataset<-read.csv("tweetclean.csv",stringsAsFactors = FALSE)
+review <-as.character(shopee_dataset$text)
+get_nrc_sentiment('happy')
+get_nrc_sentiment('excitement')
+s<-get_nrc_sentiment(review)
+review_combine<-cbind(shopee_dataset$text,s)
+par(mar=rep(3,4))
+barplot(colSums(s),col=rainbow(10),ylab='count',main='sentiment analisis')
+    }, height=400)
+    output$Wordcloud <- renderPlot({
+    set.seed(20)
+df<-df[sample(nrow(df)),]
+df<-df[sample(nrow(df)),]
+glimpse(df)
+df$X=as.factor(df$X)
+corpus<-Corpus(VectorSource(df$text))
+corpus
+inspect(corpus[1:10])
+#fungsinya untuk membersihkan data data yang tidak dibutuhkan 
+corpus.clean<-corpus%>%
+    tm_map(content_transformer(tolower))%>%
+    tm_map(removePunctuation)%>%
+    tm_map(removeNumbers)%>%
+    tm_map(removeWords,stopwords(kind="en"))%>%
+    tm_map(stripWhitespace)
+dtm<-DocumentTermMatrix(corpus.clean)
+inspect(dtm[1:10,1:20])
+df.train<-df[1:589,]
+df.test<-df[590:1000,]
+dtm.train<-dtm[1:589,]
+dtm.test<-dtm[590:1000,]
+corpus.clean.train<-corpus.clean[1:589]
+corpus.clean.test<-corpus.clean[590:1000]
+dim(dtm.train)
+fivefreq<-findFreqTerms(dtm.train,5)
+length(fivefreq)
+dtm.train.nb<-DocumentTermMatrix(corpus.clean.train,control = list(dictionary=fivefreq))
+#dim(dtm.train.nb)
+dtm.test.nb<-DocumentTermMatrix(corpus.clean.test,control = list(dictionary=fivefreq))
+dim(dtm.test.nb)
+ 
+convert_count <- function(x){
+    y<-ifelse(x>0,1,0)
+    y<-factor(y,levels=c(0,1),labels=c("no","yes"))
+    y
+}
+trainNB<-apply(dtm.train.nb,2,convert_count)
+testNB<-apply(dtm.test.nb,1,convert_count)
+classifier<-naiveBayes(trainNB,df.train$X,laplace = 1)
+library(wordcloud)
+wordcloud(corpus.clean,min.freq = 4,max.words=100,random.order=F,colors=brewer.pal(8,"Dark2"))
+  })
+}
+shinyApp(ui = ui, server = server)
+
+
+```
